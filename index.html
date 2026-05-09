@@ -1,0 +1,1839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power BI Version Control — PBIP & Azure Repos</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #060b14;
+  --bg2: #0b1422;
+  --bg3: #0f1c30;
+  --panel: #111e35;
+  --panel2: #162541;
+  --border: #1e3458;
+  --border2: #2a4a7f;
+  --accent: #0078d4;
+  --accent2: #00b4d8;
+  --accent3: #f2c94c;
+  --green: #00e676;
+  --red: #ff5252;
+  --purple: #bb86fc;
+  --text: #e8f0fe;
+  --text2: #90afd4;
+  --text3: #5a7fa8;
+  --glow: rgba(0,120,212,0.35);
+  --glow2: rgba(0,180,216,0.2);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'IBM Plex Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* ── GRID BG ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(0,120,212,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,120,212,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── NAV ── */
+nav {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(6,11,20,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 2rem;
+  display: flex; align-items: center; gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+nav::-webkit-scrollbar { display: none; }
+.nav-brand {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--accent2);
+  letter-spacing: 2px;
+  white-space: nowrap;
+  padding: 1rem 2rem 1rem 0;
+  border-right: 1px solid var(--border);
+  margin-right: 1rem;
+  text-transform: uppercase;
+}
+.nav-item {
+  padding: 1rem 1.1rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text3);
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.nav-item:hover { color: var(--text); border-bottom-color: var(--border2); }
+.nav-item.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+
+/* ── HERO ── */
+.hero {
+  position: relative; z-index: 1;
+  padding: 5rem 2rem 4rem;
+  text-align: center;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: -60px; left: 50%; transform: translateX(-50%);
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(0,120,212,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+.hero-tag {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--accent2);
+  background: rgba(0,180,216,0.08);
+  border: 1px solid rgba(0,180,216,0.25);
+  padding: 0.35rem 1rem;
+  border-radius: 2px;
+  margin-bottom: 1.5rem;
+}
+.hero h1 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+.hero h1 span { color: var(--accent2); }
+.hero p {
+  color: var(--text2);
+  font-size: 1rem;
+  max-width: 600px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.7;
+}
+.hero-badges {
+  display: flex; flex-wrap: wrap; gap: 0.75rem;
+  justify-content: center;
+}
+.badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 2px;
+  border: 1px solid;
+  letter-spacing: 1px;
+}
+.badge-blue { border-color: var(--accent); color: var(--accent); background: rgba(0,120,212,0.08); }
+.badge-cyan { border-color: var(--accent2); color: var(--accent2); background: rgba(0,180,216,0.08); }
+.badge-yellow { border-color: var(--accent3); color: var(--accent3); background: rgba(242,201,76,0.08); }
+.badge-green { border-color: var(--green); color: var(--green); background: rgba(0,230,118,0.08); }
+
+/* ── SECTIONS ── */
+.section {
+  position: relative; z-index: 1;
+  display: none;
+  padding: 2.5rem 2rem 4rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  animation: fadeIn 0.4s ease;
+}
+.section.active { display: block; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+.section-header {
+  margin-bottom: 2.5rem;
+}
+.section-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--accent2);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+.section-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.section-title span { color: var(--accent2); }
+.section-sub {
+  color: var(--text2);
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  max-width: 700px;
+}
+
+/* ── CARDS ── */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.25rem;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.card:hover {
+  border-color: var(--border2);
+  transform: translateY(-3px);
+}
+.card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+}
+.card-icon {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+.card h3 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+.card p, .card li {
+  color: var(--text2);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  margin-top: 0.25rem;
+}
+.card ul { list-style: none; padding-left: 0; }
+
+/* ── HIGHLIGHTS ── */
+.highlight {
+  background: var(--panel2);
+  border-left: 3px solid var(--accent);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+}
+.highlight.green { border-left-color: var(--green); }
+.highlight.yellow { border-left-color: var(--accent3); }
+.highlight-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--accent2);
+  margin-bottom: 0.75rem;
+}
+.highlight.green .highlight-title { color: var(--green); }
+.highlight.yellow .highlight-title { color: var(--accent3); }
+.highlight p { color: var(--text2); font-size: 0.9rem; line-height: 1.7; }
+.highlight ul { list-style: none; padding-left: 0; }
+.highlight li { color: var(--text2); font-size: 0.9rem; line-height: 1.8; margin: 0.3rem 0; }
+
+/* ── TABLES ── */
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin: 1.5rem 0;
+}
+.compare-table th {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 700;
+  color: var(--accent2);
+}
+.compare-table td {
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+  color: var(--text2);
+}
+.compare-table tr:hover { background: rgba(0,120,212,0.1); }
+.compare-table .winner { color: var(--green); font-weight: 600; }
+
+/* ── TOOLS GRID ── */
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
+  margin: 1.5rem 0;
+}
+.tool-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.25rem;
+  display: flex; gap: 1rem;
+}
+.tool-logo {
+  font-size: 2rem;
+  min-width: 50px;
+  height: 50px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 4px;
+}
+.tool-info h4 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+.tool-info p { font-size: 0.8rem; color: var(--text2); line-height: 1.5; }
+.tool-tag {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 2px;
+  margin-top: 0.5rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.tag-required { background: rgba(255,82,82,0.15); color: var(--red); border: 1px solid var(--red); }
+.tag-optional { background: rgba(242,201,76,0.15); color: var(--accent3); border: 1px solid var(--accent3); }
+
+/* ── FILE TREE ── */
+.file-tree {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text2);
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.tree-folder { color: var(--accent2); font-weight: 600; }
+.tree-file { color: var(--text); }
+.tree-note { color: var(--text3); font-size: 0.75rem; }
+
+/* ── DIVIDERS ── */
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+  margin: 2rem 0;
+}
+
+/* ── CODE BLOCKS ── */
+.code-block {
+  background: rgba(0,0,0,0.4);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 1rem 0;
+  overflow: hidden;
+}
+.code-header {
+  display: flex; justify-content: space-between; align-items: center;
+  background: rgba(0,120,212,0.1);
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem 1rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+}
+.code-lang {
+  color: var(--accent2);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.code-copy {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--accent2);
+  padding: 0.25rem 0.6rem;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: all 0.2s;
+}
+.code-copy:hover {
+  border-color: var(--accent2);
+  background: rgba(0,120,212,0.15);
+}
+.code-body {
+  padding: 1rem;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--text2);
+  overflow-x: auto;
+  line-height: 1.5;
+}
+.code-body span.kw { color: var(--accent); }
+.code-body span.str { color: var(--green); }
+.code-body span.cm { color: var(--text3); }
+
+/* ── DIAGRAM ── */
+.diagram {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.5rem;
+  margin: 1.5rem 0;
+  overflow-x: auto;
+}
+
+/* ── WORKFLOW ── */
+.wf-container {
+  position: relative;
+  padding: 2rem 0;
+}
+.wf-step {
+  display: flex; gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.wf-left {
+  position: relative;
+  min-width: 60px;
+  display: flex; flex-direction: column; align-items: center;
+}
+.wf-dot {
+  width: 50px; height: 50px;
+  background: var(--panel2);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative; z-index: 2;
+}
+.wf-step:hover .wf-dot { border-color: var(--accent2); }
+.wf-step.completed .wf-dot { background: var(--green); border-color: var(--green); }
+.wf-step.active-step .wf-dot { background: var(--accent2); border-color: var(--accent2); }
+.wf-line {
+  flex: 1;
+  border-left: 2px solid var(--border);
+  margin-top: 50px;
+  margin-bottom: -1.5rem;
+}
+.wf-content {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+.wf-content:hover { border-color: var(--accent2); }
+.wf-step-num {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--accent2);
+  letter-spacing: 2px;
+  margin-bottom: 0.5rem;
+}
+.wf-content h4 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+.wf-content > p {
+  color: var(--text2);
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+.wf-detail {
+  display: none;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.wf-step.active-step .wf-detail { display: block; }
+.wf-detail p { color: var(--text2); font-size: 0.85rem; line-height: 1.7; margin-bottom: 0.75rem; }
+.wf-detail code { background: rgba(0,120,212,0.15); padding: 0.75rem; border-radius: 2px; display: block; overflow-x: auto; }
+
+/* ── STEP LIST ── */
+.step-list {
+  margin: 1.5rem 0;
+}
+.step-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  transition: border-color 0.3s;
+}
+.step-item:hover { border-color: var(--border2); }
+.step-header {
+  display: flex; align-items: center; gap: 1rem;
+  padding: 1rem;
+  cursor: pointer;
+  background: linear-gradient(90deg, rgba(0,120,212,0.05) 0%, transparent 100%);
+  transition: background 0.3s;
+}
+.step-item:hover .step-header { background: linear-gradient(90deg, rgba(0,120,212,0.1) 0%, transparent 100%); }
+.step-num-box {
+  width: 40px; height: 40px;
+  background: var(--border);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  color: var(--accent2);
+  flex-shrink: 0;
+}
+.step-header h3 {
+  flex: 1;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.step-arrow {
+  color: var(--text3);
+  transition: transform 0.3s;
+}
+.step-item.open .step-arrow { transform: rotate(180deg); }
+.step-body {
+  display: none;
+  padding: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+.step-item.open .step-body { display: block; }
+.step-body p { color: var(--text2); line-height: 1.7; margin-bottom: 0.75rem; }
+.step-body ul { list-style: none; padding-left: 0; }
+.step-body li { color: var(--text2); line-height: 1.8; margin: 0.5rem 0; margin-left: 1rem; }
+.step-body li:before { content: '▸ '; color: var(--accent2); margin-left: -1rem; margin-right: 0.5rem; }
+
+/* ── TWO COL ── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+@media(max-width:640px) { .two-col { grid-template-columns: 1fr; } }
+
+/* ── INTRO OVERVIEW ── */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-top: 2rem;
+}
+.ov-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.ov-card::after {
+  content: '→';
+  position: absolute; right: 1.25rem; bottom: 1.25rem;
+  font-size: 1rem; color: var(--accent2);
+  opacity: 0; transition: opacity 0.2s;
+}
+.ov-card:hover { border-color: var(--accent2); transform: translateY(-3px); }
+.ov-card:hover::after { opacity: 1; }
+.ov-icon { font-size: 1.6rem; margin-bottom: 0.6rem; }
+.ov-card h4 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+.ov-card p { font-size: 0.8rem; color: var(--text2); line-height: 1.5; }
+
+.tag-new {
+  display: inline-block;
+  font-size: 0.6rem;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 0.1rem 0.4rem;
+  background: rgba(0,230,118,0.1);
+  border: 1px solid rgba(0,230,118,0.3);
+  color: var(--green);
+  border-radius: 2px;
+  letter-spacing: 1px;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
+
+/* ── NAV FOOTER ── */
+.nav-footer {
+  position: sticky; bottom: 0; z-index: 100;
+  background: rgba(6,11,20,0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  padding: 1rem 2rem;
+  display: flex; justify-content: space-between; align-items: center;
+  max-width: 100%;
+}
+.nav-btn {
+  background: none;
+  border: 1px solid var(--border2);
+  color: var(--accent2);
+  padding: 0.5rem 1rem;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+}
+.nav-btn:hover:not(:disabled) { border-color: var(--accent2); background: rgba(0,120,212,0.1); }
+.nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── PROGRESS BAR ── */
+.progress-bar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 99;
+  height: 2px;
+  background: rgba(0,120,212,0.1);
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.3s;
+}
+
+@media(max-width:768px) {
+  .card-grid { grid-template-columns: 1fr; }
+  .tools-grid { grid-template-columns: 1fr; }
+  .overview-grid { grid-template-columns: 1fr; }
+  .hero { padding: 3rem 1rem 2rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">⚡ PBI VersionCtrl</div>
+  <div class="nav-item active" data-section="home">Overview</div>
+  <div class="nav-item" data-section="vc">Version Control</div>
+  <div class="nav-item" data-section="tools">Tools & Setup</div>
+  <div class="nav-item" data-section="pbip">PBIP Format</div>
+  <div class="nav-item" data-section="azure">Azure Repos</div>
+  <div class="nav-item" data-section="workspace">Workspace Sync</div>
+  <div class="nav-item" data-section="project">Step-by-Step Project</div>
+  <div class="nav-item" data-section="workflow">Complete Workflow</div>
+</nav>
+
+<!-- ─────────── HOME / OVERVIEW ─────────── -->
+<div class="section active" id="home">
+  <!-- HERO (Only visible on Overview) -->
+  <div class="hero" id="hero-area">
+    <div class="hero-tag">📊 Demo Guide — Enterprise BI DevOps</div>
+    <h1>Power BI <span>Version Control</span><br>with PBIP & Azure Repos</h1>
+    <p>Learn how to implement professional version control for Power BI using the PBIP format, Git, and Azure DevOps — with direct workspace integration that replaces manual publishing forever.</p>
+    <div class="hero-badges">
+      <span class="badge badge-blue">Power BI Desktop</span>
+      <span class="badge badge-cyan">PBIP Format</span>
+      <span class="badge badge-yellow">Azure DevOps</span>
+      <span class="badge badge-green">Git</span>
+      <span class="badge badge-blue">Workspace Sync</span>
+    </div>
+  </div>
+
+  <!-- Module Index (Only visible on Overview) -->
+  <div class="section-header">
+    <div class="section-num">// Module Index</div>
+    <div class="section-title">What You'll <span>Learn</span></div>
+    <p class="section-sub">This interactive guide walks you through every concept and implementation step needed to bring version control to your Power BI projects — from theory to a live working pipeline.</p>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-title">🎯 Demo Objectives</div>
+    <ul>
+      <li>Understand why version control is critical for enterprise BI</li>
+      <li>Set up all required tools for a Power BI CI/CD pipeline</li>
+      <li>Master the PBIP file format — Power BI's Git-friendly format</li>
+      <li>Configure Azure Repos and connect your Power BI workspace</li>
+      <li>Build and execute a complete CI/CD workflow end-to-end</li>
+    </ul>
+  </div>
+
+  <div class="overview-grid">
+    <div class="ov-card" onclick="showSection('vc')">
+      <div class="ov-icon">📚</div>
+      <h4>Version Control Basics</h4>
+      <p>What is version control, why teams need it, and a comparison of popular tools like Git, SVN, and Mercurial.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('tools')">
+      <div class="ov-icon">🛠️</div>
+      <h4>Tools & Requirements</h4>
+      <p>Power BI Desktop, Git, VS Code, Azure DevOps — everything you need installed and configured before starting.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('pbip')">
+      <div class="ov-icon">📁</div>
+      <h4>PBIP Format</h4>
+      <p>The new Power BI Project format that stores reports and semantic models as readable, diffable text files.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('azure')">
+      <div class="ov-icon">☁️</div>
+      <h4>Azure Repos</h4>
+      <p>Microsoft's cloud Git repository service, tightly integrated with Power BI workspaces and pipelines.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('workspace')">
+      <div class="ov-icon">🔗</div>
+      <h4>Workspace Integration</h4>
+      <p>Connect a Power BI Premium or Fabric workspace directly to an Azure Repos Git repository.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('project')">
+      <div class="ov-icon">🚀</div>
+      <h4>Hands-On Project</h4>
+      <p>Build a complete Sales Analytics report with version control from scratch — step by step.</p>
+    </div>
+    <div class="ov-card" onclick="showSection('workflow')">
+      <div class="ov-icon">🔄</div>
+      <h4>Complete Workflow</h4>
+      <p>The full developer → commit → push → review → merge → workspace sync pipeline visualized and explained.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── VERSION CONTROL ─────────── -->
+<div class="section" id="vc">
+  <div class="section-header">
+    <div class="section-num">// Module 01</div>
+    <div class="section-title">What Is <span>Version Control?</span></div>
+    <p class="section-sub">Version control is a system that records changes to files over time so you can recall specific versions later. It's the backbone of modern software development — and now essential for BI teams.</p>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-icon">⏪</div>
+      <h3>Track Changes</h3>
+      <p>Every edit is recorded with who made it, when, and why. Roll back to any previous state instantly — no more "report_v3_FINAL_v2.pbix" files.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🤝</div>
+      <h3>Team Collaboration</h3>
+      <p>Multiple developers can work on the same report simultaneously using branches. Changes are merged with conflict detection and resolution.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🛡️</div>
+      <h3>Disaster Recovery</h3>
+      <p>The entire history lives in a remote repository. Accidental deletions, overwrites, or corrupted files are instantly recoverable.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">✅</div>
+      <h3>Code Review</h3>
+      <p>Pull Requests enforce peer review before any change reaches production. Quality gates catch errors before they impact stakeholders.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔀</div>
+      <h3>Branch Strategy</h3>
+      <p>Develop new features in isolation. Maintain separate dev, test, and prod environments aligned with your release process.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon">📜</div>
+      <h3>Audit Trail</h3>
+      <p>Complete traceability for compliance. Know exactly what changed in every report version — critical for regulated industries.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-num">// Why It Matters for Power BI</div>
+    <div class="section-title">The Problem with <span>.PBIX Files</span></div>
+  </div>
+
+  <div class="two-col">
+    <div class="highlight" style="border-left-color: var(--red)">
+      <div class="highlight-title" style="color: var(--red)">❌ Without Version Control</div>
+      <ul>
+        <li>Email chains of PBIX file attachments</li>
+        <li>No idea who changed what measure last week</li>
+        <li>Overwrites destroy hours of work</li>
+        <li>Can't test changes without breaking production</li>
+        <li>No rollback — you're stuck with broken reports</li>
+        <li>Binary files — impossible to diff or review</li>
+      </ul>
+    </div>
+    <div class="highlight green">
+      <div class="highlight-title">✅ With Version Control</div>
+      <ul>
+        <li>Single source of truth in a Git repository</li>
+        <li>Every change attributed to a developer</li>
+        <li>Branching protects production reports</li>
+        <li>Automated testing before deployment</li>
+        <li>One-command rollback to any version</li>
+        <li>Text-based PBIP files are fully diffable</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-num">// Tool Comparison</div>
+    <div class="section-title">Popular Version Control <span>Tools</span></div>
+  </div>
+
+  <div style="overflow-x:auto">
+  <table class="compare-table">
+    <thead>
+      <tr>
+        <th>Tool</th>
+        <th>Type</th>
+        <th>Architecture</th>
+        <th>Power BI Support</th>
+        <th>Popularity</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Git + Azure Repos</strong></td>
+        <td>DVCS</td>
+        <td>Distributed</td>
+        <td class="winner">✅ Native Integration</td>
+        <td class="winner">⭐ #1 Enterprise</td>
+      </tr>
+      <tr>
+        <td>Git + GitHub</td>
+        <td>DVCS</td>
+        <td>Distributed</td>
+        <td>✅ Supported</td>
+        <td>⭐ #1 Open Source</td>
+      </tr>
+      <tr>
+        <td>Git + GitLab</td>
+        <td>DVCS</td>
+        <td>Distributed</td>
+        <td>✅ Supported</td>
+        <td>⭐ Popular DevOps</td>
+      </tr>
+      <tr>
+        <td>SVN (Subversion)</td>
+        <td>CVCS</td>
+        <td>Centralized</td>
+        <td>❌ No native support</td>
+        <td>📉 Declining</td>
+      </tr>
+      <tr>
+        <td>Mercurial</td>
+        <td>DVCS</td>
+        <td>Distributed</td>
+        <td>❌ No support</td>
+        <td>📉 Niche</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="highlight yellow" style="margin-top:1.5rem">
+    <div class="highlight-title">💡 Why Git + Azure Repos Wins for Power BI</div>
+    <p>Microsoft built native Git integration directly into Power BI Service and Microsoft Fabric. Azure Repos is part of the Azure DevOps suite, meaning you get Git, CI/CD pipelines, boards, and artifact management in one platform — all with native AAD/Entra authentication that matches your Power BI tenant.</p>
+  </div>
+</div>
+
+<!-- ─────────── TOOLS ─────────── -->
+<div class="section" id="tools">
+  <div class="section-header">
+    <div class="section-num">// Module 02</div>
+    <div class="section-title">Tools & <span>Requirements</span></div>
+    <p class="section-sub">Before building your pipeline, ensure all the required tools are installed and configured. Here's your complete setup checklist.</p>
+  </div>
+
+  <div class="section-header" style="margin-bottom:1rem">
+    <div class="section-num">// Required Tools</div>
+  </div>
+  <div class="tools-grid">
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(248,183,9,0.15)">📊</div>
+      <div class="tool-info">
+        <h4>Power BI Desktop</h4>
+        <p>Must be version <strong>March 2023 or later</strong> to support PBIP format. Download from Microsoft Store or powerbi.com.</p>
+        <span class="tool-tag tag-required">REQUIRED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(240,80,50,0.15)">🐙</div>
+      <div class="tool-info">
+        <h4>Git for Windows</h4>
+        <p>The distributed version control system. Install from <strong>git-scm.com</strong>. Includes Git Bash for command-line operations.</p>
+        <span class="tool-tag tag-required">REQUIRED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(0,122,204,0.15)">💻</div>
+      <div class="tool-info">
+        <h4>VS Code</h4>
+        <p>Ideal editor for viewing PBIP files, writing YAML pipelines, and managing Git operations with the Git extension.</p>
+        <span class="tool-tag tag-required">REQUIRED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(0,120,212,0.15)">☁️</div>
+      <div class="tool-info">
+        <h4>Azure DevOps Account</h4>
+        <p>Provides Azure Repos (Git hosting), Pipelines (CI/CD), and Boards. Free tier available at <strong>dev.azure.com</strong>.</p>
+        <span class="tool-tag tag-required">REQUIRED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(0,183,195,0.15)">🏗️</div>
+      <div class="tool-info">
+        <h4>Power BI / Fabric Workspace</h4>
+        <p>Requires <strong>Premium Per User (PPU)</strong> or <strong>Microsoft Fabric</strong> capacity to enable Git integration on the workspace.</p>
+        <span class="tool-tag tag-required">REQUIRED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(187,134,252,0.15)">🔧</div>
+      <div class="tool-info">
+        <h4>Git Credential Manager</h4>
+        <p>Included with Git for Windows. Handles Azure DevOps OAuth tokens so you don't re-enter credentials every push.</p>
+        <span class="tool-tag tag-optional">RECOMMENDED</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(0,230,118,0.15)">🖥️</div>
+      <div class="tool-info">
+        <h4>GitHub Desktop / Fork</h4>
+        <p>GUI clients for Git operations. Great for team members who prefer visual commit and branch management.</p>
+        <span class="tool-tag tag-optional">OPTIONAL</span>
+      </div>
+    </div>
+    <div class="tool-card">
+      <div class="tool-logo" style="background:rgba(242,201,76,0.15)">⚙️</div>
+      <div class="tool-info">
+        <h4>Azure CLI</h4>
+        <p>Command-line interface for Azure. Useful for scripting repo creation, permission assignments, and pipeline triggers.</p>
+        <span class="tool-tag tag-optional">OPTIONAL</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="highlight yellow" style="margin-top:2rem">
+    <div class="highlight-title">⚙️ Power BI Desktop — Enable PBIP Preview</div>
+    <p>Go to <strong>File → Options & Settings → Options → Preview Features</strong> and enable <strong>"Store reports using enhanced metadata format"</strong> and <strong>"Power BI Project (.pbip) save option"</strong>. Restart Power BI Desktop after enabling.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-num">// Architecture Overview</div>
+    <div class="section-title">CI/CD <span>Architecture</span></div>
+  </div>
+
+  <div class="diagram">
+    <svg viewBox="0 0 900 280" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;font-family:'Rajdhani',sans-serif">
+      <!-- Developer -->
+      <rect x="20" y="100" width="130" height="80" rx="4" fill="#111e35" stroke="#2a4a7f" stroke-width="1.5"/>
+      <text x="85" y="128" fill="#90afd4" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">DEVELOPER</text>
+      <text x="85" y="148" font-size="20" text-anchor="middle">👨‍💻</text>
+      <text x="85" y="168" fill="#5a7fa8" font-size="9" text-anchor="middle">Power BI Desktop</text>
+      <!-- Arrow 1 -->
+      <path d="M150 140 L190 140" stroke="#0078d4" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="170" y="132" fill="#5a7fa8" font-size="8" text-anchor="middle">PBIP</text>
+      <!-- Git Local -->
+      <rect x="190" y="100" width="130" height="80" rx="4" fill="#111e35" stroke="#2a4a7f" stroke-width="1.5"/>
+      <text x="255" y="128" fill="#90afd4" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">LOCAL GIT</text>
+      <text x="255" y="148" font-size="20" text-anchor="middle">📁</text>
+      <text x="255" y="168" fill="#5a7fa8" font-size="9" text-anchor="middle">Commit + Branch</text>
+      <!-- Arrow 2 -->
+      <path d="M320 140 L360 140" stroke="#0078d4" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="340" y="132" fill="#5a7fa8" font-size="8" text-anchor="middle">PUSH</text>
+      <!-- Azure Repos -->
+      <rect x="360" y="100" width="130" height="80" rx="4" fill="#111e35" stroke="#2a4a7f" stroke-width="1.5"/>
+      <text x="425" y="128" fill="#90afd4" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">AZURE REPOS</text>
+      <text x="425" y="148" font-size="20" text-anchor="middle">☁️</text>
+      <text x="425" y="168" fill="#5a7fa8" font-size="9" text-anchor="middle">PR + Review</text>
+      <!-- Arrow 3 -->
+      <path d="M490 140 L530 140" stroke="#0078d4" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="510" y="132" fill="#5a7fa8" font-size="8" text-anchor="middle">MERGE</text>
+      <!-- Pipeline -->
+      <rect x="530" y="100" width="130" height="80" rx="4" fill="#111e35" stroke="#2a4a7f" stroke-width="1.5"/>
+      <text x="595" y="122" fill="#90afd4" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">PIPELINE</text>
+      <text x="595" y="142" font-size="20" text-anchor="middle">⚙️</text>
+      <text x="595" y="162" fill="#5a7fa8" font-size="9" text-anchor="middle">Azure DevOps</text>
+      <text x="595" y="174" fill="#5a7fa8" font-size="9" text-anchor="middle">CI/CD</text>
+      <!-- Arrow 4 -->
+      <path d="M660 140 L700 140" stroke="#0078d4" stroke-width="2" marker-end="url(#arr)"/>
+      <text x="680" y="132" fill="#5a7fa8" font-size="8" text-anchor="middle">SYNC</text>
+      <!-- Workspace -->
+      <rect x="700" y="100" width="130" height="80" rx="4" fill="#111e35" stroke="#2a4a7f" stroke-width="1.5"/>
+      <text x="765" y="122" fill="#90afd4" font-size="11" text-anchor="middle" font-family="'IBM Plex Mono',monospace">WORKSPACE</text>
+      <text x="765" y="142" font-size="20" text-anchor="middle">🏗️</text>
+      <text x="765" y="162" fill="#5a7fa8" font-size="9" text-anchor="middle">Power BI Service</text>
+      <text x="765" y="174" fill="#5a7fa8" font-size="9" text-anchor="middle">/ Fabric</text>
+      <!-- Top labels -->
+      <text x="450" y="35" fill="#00b4d8" font-size="13" text-anchor="middle" font-family="'Rajdhani',sans-serif" font-weight="700" letter-spacing="2">POWER BI CI/CD PIPELINE ARCHITECTURE</text>
+      <line x1="150" y1="45" x2="750" y2="45" stroke="#1e3458" stroke-width="1" stroke-dasharray="4,4"/>
+      <!-- Bottom row labels -->
+      <text x="85" y="210" fill="#5a7fa8" font-size="8" text-anchor="middle">① Develop</text>
+      <text x="255" y="210" fill="#5a7fa8" font-size="8" text-anchor="middle">② Commit</text>
+      <text x="425" y="210" fill="#5a7fa8" font-size="8" text-anchor="middle">③ Review</text>
+      <text x="595" y="210" fill="#5a7fa8" font-size="8" text-anchor="middle">④ Automate</text>
+      <text x="765" y="210" fill="#5a7fa8" font-size="8" text-anchor="middle">⑤ Deploy</text>
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0078d4"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</div>
+
+<!-- ─────────── PBIP ─────────── -->
+<div class="section" id="pbip">
+  <div class="section-header">
+    <div class="section-num">// Module 03</div>
+    <div class="section-title">The <span>PBIP Format</span></div>
+    <p class="section-sub">Power BI Project (.pbip) is a folder-based format that stores your report and semantic model as readable text files — making them compatible with Git version control.</p>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="highlight">
+        <div class="highlight-title">📦 What is PBIP?</div>
+        <p>PBIP (Power BI Project) is an open, text-based file format introduced by Microsoft to replace the binary <code style="color:var(--accent2);background:rgba(0,0,0,0.3);padding:0 0.3rem;border-radius:2px">.pbix</code> format. Instead of a single opaque binary file, a PBIP project is a <strong>folder structure</strong> containing JSON and TMDL files that represent every aspect of your report and data model.</p>
+      </div>
+
+      <div class="highlight yellow" style="margin-top:1rem">
+        <div class="highlight-title">⚡ Key Benefits</div>
+        <ul>
+          <li><strong>Git-diffable</strong> — see exactly what changed line by line</li>
+          <li><strong>Human-readable</strong> — open any file in VS Code</li>
+          <li><strong>Merge-friendly</strong> — collaborate without conflicts</li>
+          <li><strong>Portable</strong> — share logic, not binary blobs</li>
+          <li><strong>CI/CD ready</strong> — automate deployments via pipeline</li>
+        </ul>
+      </div>
+    </div>
+    <div>
+      <div class="section-num" style="margin-bottom:0.5rem">// PBIP Folder Structure</div>
+      <div class="file-tree">
+<span class="tree-folder">📁 MySalesReport.pbip</span> <span class="tree-note">← workspace root</span>
+│
+├── <span class="tree-folder">📁 MySalesReport.Report/</span>
+│   ├── <span class="tree-file">report.json</span>          <span class="tree-note">← report metadata</span>
+│   ├── <span class="tree-folder">📁 pages/</span>
+│   │   ├── <span class="tree-file">ReportSection1/</span>
+│   │   │   ├── <span class="tree-file">page.json</span>    <span class="tree-note">← page settings</span>
+│   │   │   └── <span class="tree-file">visuals/</span>     <span class="tree-note">← visual configs</span>
+│   └── <span class="tree-file">definition.pbir</span>     <span class="tree-note">← entry point</span>
+│
+├── <span class="tree-folder">📁 MySalesReport.SemanticModel/</span>
+│   ├── <span class="tree-file">definition.pbism</span>    <span class="tree-note">← model definition</span>
+│   └── <span class="tree-folder">📁 definition/</span>
+│       ├── <span class="tree-file">model.bim</span>       <span class="tree-note">← TMDL / tables</span>
+│       ├── <span class="tree-folder">📁 tables/</span>
+│       │   ├── <span class="tree-file">Sales.tmdl</span>
+│       │   └── <span class="tree-file">Date.tmdl</span>
+│       └── <span class="tree-folder">📁 measures/</span>
+│           └── <span class="tree-file">KPIs.tmdl</span>
+│
+└── <span class="tree-file">.gitignore</span>              <span class="tree-note">← ignore caches</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-num">// PBIP vs PBIX</div>
+    <div class="section-title">Format <span>Comparison</span></div>
+  </div>
+
+  <div style="overflow-x:auto">
+  <table class="compare-table">
+    <thead>
+      <tr><th>Feature</th><th>.PBIX (Old)</th><th>.PBIP (New)</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>File Format</td><td>Binary ZIP archive</td><td class="winner">Folder with text files</td></tr>
+      <tr><td>Git Diff</td><td>❌ Not possible</td><td class="winner">✅ Full line-by-line diff</td></tr>
+      <tr><td>Merge Conflicts</td><td>❌ Binary — unusable</td><td class="winner">✅ Resolved in text editor</td></tr>
+      <tr><td>Code Review</td><td>❌ Can't review content</td><td class="winner">✅ Full PR diff review</td></tr>
+      <tr><td>Collaboration</td><td>❌ Lock model during edit</td><td class="winner">✅ Parallel development</td></tr>
+      <tr><td>Version Control</td><td>❌ No line-by-line history</td><td class="winner">✅ Complete change tracking</td></tr>
+      <tr><td>Workspace Sync</td><td>❌ Manual copy/paste</td><td class="winner">✅ Automatic Git integration</td></tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<!-- ─────────── AZURE REPOS ─────────── -->
+<div class="section" id="azure">
+  <div class="section-header">
+    <div class="section-num">// Module 04</div>
+    <div class="section-title">Azure <span>Repos Setup</span></div>
+    <p class="section-sub">Azure Repos is Microsoft's cloud Git service, tightly integrated with Power BI. Learn how to configure repositories, set up branch policies, and prepare for workspace integration.</p>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-title">☁️ What is Azure Repos?</div>
+    <p><strong>Azure Repos</strong> is part of Azure DevOps and provides unlimited, cloud-hosted Git repositories with built-in Pull Request workflows, branch policies, and deep integration with Power BI workspaces. Unlike GitHub or GitLab, it's tightly coupled with Microsoft's ecosystem — making it ideal for enterprise Power BI teams.</p>
+  </div>
+
+  <div class="step-list" style="margin-top:2rem">
+
+    <div class="step-item open">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">1</div>
+        <h3>Create an Azure DevOps Organization</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Visit <strong>dev.azure.com</strong> and create a new organization (or use an existing one). This is your central hub for version control, CI/CD pipelines, and team collaboration.</p>
+        <ul>
+          <li>Sign in with your Microsoft/Entra ID account</li>
+          <li>Click <strong>"Create organization"</strong></li>
+          <li>Name it something meaningful (e.g., <code style="color:var(--accent2)">MyCompany-Analytics</code>)</li>
+          <li>Choose your region</li>
+          <li>Click <strong>"Continue"</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">2</div>
+        <h3>Create a Project</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Projects group your repositories, pipelines, boards, and other resources. Create one specifically for Power BI work.</p>
+        <ul>
+          <li>In your organization, click <strong>"New project"</strong></li>
+          <li>Name: <code style="color:var(--accent2)">PowerBI-Analytics</code> (or your preference)</li>
+          <li>Visibility: Choose <strong>Private</strong> for security</li>
+          <li>Version control: Select <strong>Git</strong></li>
+          <li>Click <strong>"Create"</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">3</div>
+        <h3>Create a Git Repository</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Inside your project, create a new repository to store your Power BI PBIP files. This is where all your reports and data models will live.</p>
+        <ul>
+          <li>Go to <strong>Repos → Files</strong></li>
+          <li>Click <strong>"New repository"</strong></li>
+          <li>Repository name: <code style="color:var(--accent2)">SalesReport</code> (or your report name)</li>
+          <li>Check <strong>"Initialize with a README"</strong></li>
+          <li>Add <strong>.gitignore</strong> for C# / .NET (Power BI uses similar exclusions)</li>
+          <li>Click <strong>"Create"</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">4</div>
+        <h3>Initialize the Repository</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>In your project, go to <strong>Repos → Files</strong>. Initialize with a README and add a <strong>.gitignore</strong> for your project type.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">BASH</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Clone the empty repo to your local machine</span>
+<span class="kw">git</span> clone https://dev.azure.com/<span class="str">YOUR_ORG</span>/<span class="str">PowerBI-Analytics</span>/_git/<span class="str">SalesReport</span>
+
+<span class="kw">cd</span> SalesReport
+
+<span class="cm"># Copy your PBIP project files into the cloned folder</span>
+<span class="cm"># Then add and commit</span>
+<span class="kw">git</span> add .
+<span class="kw">git</span> commit -m <span class="str">"feat: initial Power BI project setup"</span>
+<span class="kw">git</span> push origin main</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">5</div>
+        <h3>Configure Branch Policies</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Go to <strong>Project Settings → Repos → Policies</strong> and configure the main branch protection rules.</p>
+        <ul>
+          <li>✅ <strong>Require a minimum number of reviewers</strong> (set to 1 or 2)</li>
+          <li>✅ <strong>Check for linked work items</strong></li>
+          <li>✅ <strong>Check for comment resolution</strong></li>
+          <li>✅ <strong>Require merge strategy</strong> (Squash merge recommended)</li>
+          <li>✅ <strong>Build Validation</strong> — run pipeline before merge</li>
+        </ul>
+        <div class="highlight yellow" style="margin-top:0.75rem">
+          <div class="highlight-title">📌 Tip</div>
+          <p>Branch policies prevent anyone (including admins) from pushing directly to main. All changes must go through a Pull Request — this is how you enforce quality gates.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">6</div>
+        <h3>Create .gitignore for Power BI</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Create a <code style="color:var(--accent2)">.gitignore</code> file at the root of your repo to exclude Power BI cache and local settings files:</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">.gitignore</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Power BI cache and local files</span>
+*.pbix
+.pbi/
+
+<span class="cm"># Report cache</span>
+**/.pbi/
+**/localSettings.json
+
+<span class="cm"># Auto-recovery files</span>
+*.pbix.autorecovery
+
+<span class="cm"># OS files</span>
+.DS_Store
+Thumbs.db
+
+<span class="cm"># VS Code</span>
+.vscode/settings.json</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── WORKSPACE SYNC ─────────── -->
+<div class="section" id="workspace">
+  <div class="section-header">
+    <div class="section-num">// Module 05</div>
+    <div class="section-title">Workspace <span>Git Integration</span></div>
+    <p class="section-sub">Connect your Power BI Premium or Microsoft Fabric workspace directly to Azure Repos. This enables bi-directional sync between the workspace and your repository.</p>
+  </div>
+
+  <div class="highlight yellow">
+    <div class="highlight-title">⚠️ Prerequisites</div>
+    <ul>
+      <li>Workspace must be in <strong>Premium Per User (PPU)</strong> or <strong>Microsoft Fabric</strong> capacity</li>
+      <li>Azure DevOps organization must be in the <strong>same Azure tenant</strong> as your Power BI tenant</li>
+      <li>You must have <strong>Admin</strong> access to the workspace</li>
+      <li>Git integration must be <strong>enabled by the Fabric admin</strong> in tenant settings</li>
+    </ul>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="step-list" style="margin-top:1.5rem">
+    <div class="step-item open">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">1</div>
+        <h3>Enable Git Integration in Tenant Settings</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>As a Fabric Admin: Go to <strong>Fabric Admin Portal → Tenant Settings → Integration Settings</strong>.</p>
+        <ul>
+          <li>Enable <strong>"Users can synchronize workspace items with their Git repositories"</strong></li>
+          <li>Enable <strong>"Users can export items to Git repositories in other geographical locations"</strong> (if needed)</li>
+          <li>Enable for <strong>the entire organization</strong> or specific security groups</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">2</div>
+        <h3>Connect Workspace to Azure Repos</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>In Power BI Service, navigate to your workspace:</p>
+        <ul>
+          <li>Click <strong>Workspace Settings</strong> (gear icon)</li>
+          <li>Go to <strong>Git integration</strong> tab</li>
+          <li>Select <strong>Azure DevOps</strong> as the provider</li>
+          <li>Select your <strong>Organization</strong>, <strong>Project</strong>, <strong>Repository</strong></li>
+          <li>Set the <strong>Branch</strong> (e.g., <code style="color:var(--accent2)">main</code> or <code style="color:var(--accent2)">dev</code>)</li>
+          <li>Set the <strong>Git Folder</strong> path (root <code style="color:var(--accent2)">/</code> or subfolder)</li>
+          <li>Click <strong>"Connect and sync"</strong></li>
+        </ul>
+        <div class="highlight green" style="margin-top:0.75rem">
+          <div class="highlight-title">✅ What Happens Next</div>
+          <p>Power BI will scan the repository folder and import any PBIP-format reports and semantic models found. These appear in your workspace ready to work with.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">3</div>
+        <h3>Understand Sync Status Icons</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>In the workspace, each item shows a Git sync status indicator next to its name:</p>
+        <ul>
+          <li>🟢 <strong>Synced</strong> — workspace matches the branch</li>
+          <li>🟡 <strong>Uncommitted changes</strong> — workspace has local changes not in Git</li>
+          <li>🔵 <strong>Update available</strong> — Git has newer commits not yet pulled</li>
+          <li>🔴 <strong>Conflict</strong> — workspace and Git diverged, manual resolution needed</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">4</div>
+        <h3>Branch Strategy for Workspaces</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Best practice is to connect each workspace to a different branch, matching your deployment stages:</p>
+        <div class="file-tree" style="line-height:1.8">
+<span class="tree-folder">Dev Workspace</span>     → <span class="tree-file">feature/* branch</span>    <span class="tree-note">(developer experimentation)</span>
+<span class="tree-folder">Test Workspace</span>    → <span class="tree-file">develop branch</span>     <span class="tree-note">(QA & validation)</span>
+<span class="tree-folder">Prod Workspace</span>    → <span class="tree-file">main branch</span>        <span class="tree-note">(production, locked)</span>
+        </div>
+        <p style="margin-top:0.75rem">This ensures only reviewed, approved code reaches production — enforced by branch policies on main.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────── PROJECT ─────────── -->
+<div class="section" id="project">
+  <div class="section-header">
+    <div class="section-num">// Module 06</div>
+    <div class="section-title">Hands-On <span>Project</span></div>
+    <p class="section-sub">Build a Sales Analytics Power BI report with full version control from scratch. Follow each step in sequence.</p>
+  </div>
+
+  <div class="highlight">
+    <div class="highlight-title">📋 Project Scenario</div>
+    <p>Your team needs to build a <strong>Sales Analytics Dashboard</strong> tracking revenue, units sold, and regional performance. You'll use PBIP format, Azure Repos, and implement a complete CI/CD workflow so the whole BI team can collaborate safely.</p>
+  </div>
+
+  <div class="step-list" style="margin-top:2rem">
+
+    <div class="step-item open">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">1</div>
+        <h3>Set Up Git Repository Locally</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Clone the Azure Repos repository and set up the project folder structure.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">BASH</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Clone the repo</span>
+<span class="kw">git</span> clone https://dev.azure.com/<span class="str">YOUR_ORG</span>/<span class="str">PowerBI-Analytics</span>/_git/<span class="str">SalesReport</span>
+<span class="kw">cd</span> SalesReport
+
+<span class="cm"># Create folder structure</span>
+mkdir Reports SemanticModels Docs
+<span class="kw">git</span> add .
+<span class="kw">git</span> commit -m <span class="str">"chore: initial folder structure"</span>
+<span class="kw">git</span> push</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">2</div>
+        <h3>Create Feature Branch</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Create a feature branch for development. This keeps your work isolated until it's reviewed and approved.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">BASH</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Create and check out a new feature branch</span>
+<span class="kw">git</span> checkout -b feature/sales-dashboard
+
+<span class="cm"># Now you're on the feature branch</span>
+<span class="cm"># All commits here won't affect main until merged</span>
+<span class="kw">git</span> branch</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">3</div>
+        <h3>Build Report in Power BI Desktop</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Open Power BI Desktop and create your Sales Analytics report. Save it as PBIP format in your local repo folder.</p>
+        <ul>
+          <li>Open Power BI Desktop</li>
+          <li>Connect to your Sales data source</li>
+          <li>Create the semantic model with tables, columns, and measures</li>
+          <li>Build report pages with visuals (cards, charts, tables)</li>
+          <li>Go to <strong>File → Save As</strong></li>
+          <li>Choose format: <strong>Power BI Project (.pbip)</strong></li>
+          <li>Save to: <code style="color:var(--accent2)">~/SalesReport/Reports/SalesAnalytics.pbip</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">4</div>
+        <h3>Commit Changes to Local Git</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Add your PBIP files to Git and commit with a descriptive message.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">BASH</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Check status</span>
+<span class="kw">git</span> status
+
+<span class="cm"># Stage all PBIP files</span>
+<span class="kw">git</span> add Reports/SalesAnalytics.pbip/
+
+<span class="cm"># Commit with descriptive message</span>
+<span class="kw">git</span> commit -m <span class="str">"feat: create Sales Analytics dashboard
+
+- Added Sales, Date, and Product tables
+- Created measures: Total Revenue, Units Sold, Avg Price
+- Built Executive Summary page with KPI cards
+- Added regional breakdown charts"</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">5</div>
+        <h3>Push Feature Branch to Azure Repos</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Push your commits to the feature branch on Azure Repos.</p>
+        <div class="code-block">
+          <div class="code-header"><span class="code-lang">BASH</span><span class="code-copy" onclick="copyCode(this)">COPY</span></div>
+          <div class="code-body"><span class="cm"># Push feature branch to remote</span>
+<span class="kw">git</span> push -u origin feature/sales-dashboard
+
+<span class="cm"># The -u flag sets this as the default upstream branch</span>
+<span class="cm"># Next time, just 'git push' without specifying the branch</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">6</div>
+        <h3>Create Pull Request in Azure DevOps</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Go to Azure DevOps and create a Pull Request to merge your feature branch into main.</p>
+        <ul>
+          <li>Go to your Azure DevOps project</li>
+          <li>Click <strong>Repos → Pull Requests</strong></li>
+          <li>Click <strong>"New Pull Request"</strong></li>
+          <li>Source: <code style="color:var(--accent2)">feature/sales-dashboard</code></li>
+          <li>Target: <code style="color:var(--accent2)">main</code></li>
+          <li>Add title: <code style="color:var(--accent2)">Add Sales Analytics Dashboard</code></li>
+          <li>Add description with context about the changes</li>
+          <li>Click <strong>"Create"</strong></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">7</div>
+        <h3>Request Review from Team</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Add reviewers who will check your PBIP file diffs and validate the changes.</p>
+        <ul>
+          <li>In the PR, click <strong>"Add reviewers"</strong></li>
+          <li>Select colleagues (at least 1-2 required by policy)</li>
+          <li>Add a comment requesting review: <span class="tree-note">"Please review the measure definitions and visual layouts"</span></li>
+          <li>Reviewers will get notifications and can add comments on specific lines</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">8</div>
+        <h3>Address Review Feedback</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>Reviewers may request changes. Make updates in Power BI Desktop and push new commits to the same branch.</p>
+        <ul>
+          <li>Make changes locally in Power BI Desktop</li>
+          <li>Commit and push again (PR automatically updates with new commits)</li>
+          <li>Address reviewer comments in the PR thread</li>
+          <li>Once approved, proceed to merge</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">9</div>
+        <h3>Complete Pull Request (Merge to Main)</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>After approval, merge the PR into main. This makes your changes official.</p>
+        <ul>
+          <li>In Azure DevOps PR view, click <strong>"Complete"</strong></li>
+          <li>Merge strategy: Select <strong>"Squash commit"</strong> (recommended)</li>
+          <li>Check <strong>"Delete source branch"</strong> (clean up)</li>
+          <li>Click <strong>"Complete merge"</strong></li>
+          <li>Your changes are now on main — ready for workspace deployment</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-item">
+      <div class="step-header" onclick="toggleStep(this)">
+        <div class="step-num-box">10</div>
+        <h3>Workspace Auto-Syncs Changes</h3>
+        <span class="step-arrow">▼</span>
+      </div>
+      <div class="step-body">
+        <p>The Power BI workspace connected to this repository automatically detects the new commits and shows an "Update available" badge.</p>
+        <ul>
+          <li>Go to your Power BI workspace</li>
+          <li>Look for the 🔵 <strong>"Update available"</strong> badge on items</li>
+          <li>Click <strong>"Update all"</strong> to pull changes from Git</li>
+          <li>Reports are instantly live for stakeholders!</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ─────────── WORKFLOW ─────────── -->
+<div class="section" id="workflow">
+  <div class="section-header">
+    <div class="section-num">// Module 07</div>
+    <div class="section-title">Complete Developer <span>Workflow</span></div>
+    <p class="section-sub">From a developer's first commit through deployment to production workspace — this is the entire CI/CD pipeline visualized and explained step by step.</p>
+  </div>
+
+  <div class="wf-container">
+
+    <div class="wf-step" id="wfs-1">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(1)">🔨</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(1)">
+        <div class="wf-step-num">STEP 01</div>
+        <h4>Create Feature Branch Locally</h4>
+        <p>Developer creates a feature branch on their local machine to develop in isolation.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> The developer's local Git repository (already cloned from Azure Repos) now has a new branch. They switch to it and all commits on this branch are separate from the main branch, ensuring other developers aren't affected.</p>
+          <code>git checkout -b feature/new-kpi-margin
+<span class="cm"># Developer is now on the feature branch</span>
+<span class="cm"># Any commits here stay local until pushed</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-2">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(2)">📊</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(2)">
+        <div class="wf-step-num">STEP 02</div>
+        <h4>Make Changes in Power BI Desktop</h4>
+        <p>Developer opens the Power BI report (saved as PBIP), edits measures, adds visuals, and saves locally.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> Power BI Desktop modifies PBIP files (JSON and TMDL) on disk. The files in the feature branch folder are updated. Git tracking sees the changes but hasn't committed them yet — this is called "Uncommitted Changes" in Git terminology.</p>
+          <code><span class="cm"># In Power BI Desktop</span>
+<span class="cm"># Add measure: Gross Margin % = DIVIDE([Gross Profit],[Total Revenue])</span>
+<span class="cm"># Add measure to Executive Summary page card visual</span>
+<span class="cm"># Save (Ctrl+S)</span>
+<span class="cm"># PBIP files on disk are updated automatically</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-3">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(3)">💾</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(3)">
+        <div class="wf-step-num">STEP 03</div>
+        <h4>Commit to Git</h4>
+        <p>Stage changed PBIP files and create a descriptive commit with the change summary.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> The developer reviews the diff (git diff), stages meaningful changes, and writes a commit message following conventional commits format for a clear history.</p>
+          <code>git add SalesAnalytics.SemanticModel/
+git add SalesAnalytics.Report/pages/ExecutiveSummary/
+git commit -m <span class="str">"feat(kpi): add Gross Margin % measure to Executive Summary
+
+- Added Gross Margin % = DIVIDE([Gross Profit],[Total Revenue])
+- Updated Executive Summary page card visual
+- Linked to story #1042"</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-4">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(4)">⬆️</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(4)">
+        <div class="wf-step-num">STEP 04</div>
+        <h4>Push to Azure Repos</h4>
+        <p>Push the feature branch to the remote repository, making changes visible to the team.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> The feature branch is pushed to Azure Repos. Azure DevOps may automatically trigger a build validation pipeline to run basic checks on the pushed code before a PR can be created.</p>
+          <code>git push origin feature/new-kpi-margin
+
+<span class="cm"># Azure DevOps outputs a direct link to create a PR:</span>
+<span class="cm"># remote: Create a pull request for 'feature/new-kpi-margin':</span>
+<span class="cm"># remote: https://dev.azure.com/MYORG/.../pullrequests/new?...</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-5">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(5)">👁️</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(5)">
+        <div class="wf-step-num">STEP 05</div>
+        <h4>Pull Request Review</h4>
+        <p>Designated reviewers examine the PBIP file diffs, comment on issues, and approve or request changes.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> In Azure DevOps PR view, reviewers see a clean diff of every .tmdl and .json file. They can comment on specific lines, request changes, and approve. Branch policies enforce that all required approvals and checks pass before merge is allowed.</p>
+          <code><span class="cm"># Reviewer checks: measure formula correct?</span>
+<span class="cm"># Reviewer checks: naming conventions followed?</span>
+<span class="cm"># Reviewer checks: no unintended visual changes?</span>
+<span class="cm"># All checks pass → Reviewer approves ✅</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-6">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(6)">🔀</div>
+        <div class="wf-line"></div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(6)">
+        <div class="wf-step-num">STEP 06</div>
+        <h4>Merge to Main Branch</h4>
+        <p>After approval, the PR is completed and changes are squash-merged into the main branch.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> The PR is completed via Azure DevOps UI using Squash merge. The main branch now contains the reviewed, approved changes. The feature branch is deleted. The connected workspace will now show a blue "Update available" badge.</p>
+          <code><span class="cm"># Complete PR via Azure DevOps UI:</span>
+<span class="cm"># Repos → Pull Requests → [Your PR] → Complete</span>
+<span class="cm"># Merge type: Squash commit (keeps main history clean)</span>
+<span class="cm"># ✅ Delete source branch after merging</span>
+<span class="cm"># → main branch is now updated with your changes</span></code>
+        </div>
+      </div>
+    </div>
+
+    <div class="wf-step" id="wfs-7">
+      <div class="wf-left">
+        <div class="wf-dot" onclick="activateWfStep(7)">🔄</div>
+      </div>
+      <div class="wf-content" onclick="activateWfStep(7)">
+        <div class="wf-step-num">STEP 07</div>
+        <h4>Workspace Sync</h4>
+        <p>The Power BI workspace detects the new commits on main and syncs — making changes live for stakeholders.</p>
+        <div class="wf-detail">
+          <p><strong>What happens here:</strong> Since the workspace is already connected to Azure Repos, Power BI Service automatically detects the new commits on the main branch. A workspace member goes to the workspace, sees the blue "Update available" badge, and clicks <strong>"Update all"</strong> to pull the latest PBIP files and publish the updated reports.</p>
+          <code><span class="cm"># In Power BI Service:</span>
+<span class="cm"># 1. Open your connected workspace</span>
+<span class="cm"># 2. Look for the 🔵 "Update available" badge on items</span>
+<span class="cm"># 3. Click "Update all" at the top of the workspace</span>
+<span class="cm">#    — OR — click the badge on individual items</span>
+<span class="cm"># 4. Power BI pulls latest PBIP from main branch</span>
+<span class="cm"># 5. Reports are live for stakeholders instantly ✅</span>
+
+<span class="cm"># No pipeline needed — the Git integration</span>
+<span class="cm"># IS the deployment mechanism!</span></code>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-num">// How Workspace Sync Works</div>
+    <div class="section-title">Workspace <span>Auto-Detects</span> Changes</div>
+  </div>
+
+  <div class="two-col">
+    <div class="highlight green">
+      <div class="highlight-title">✅ What Triggers a Sync Notification</div>
+      <ul>
+        <li>A PR is merged into the branch your workspace is connected to</li>
+        <li>A direct commit is pushed to that branch (if allowed)</li>
+        <li>The workspace polls Azure Repos and detects new commits</li>
+        <li>A workspace admin manually clicks "Update all"</li>
+      </ul>
+    </div>
+    <div class="highlight yellow">
+      <div class="highlight-title">⚠️ Important Notes</div>
+      <ul>
+        <li>Sync does <strong>not</strong> happen automatically — a workspace user must click <strong>"Update all"</strong></li>
+        <li>Only items tracked in the connected Git folder are synced</li>
+        <li>Data refresh schedules and permissions are <strong>not</strong> stored in Git — manage separately</li>
+        <li>Each workspace connects to exactly <strong>one branch</strong> at a time</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="highlight" style="margin-top:1rem">
+    <div class="highlight-title">🔄 Multi-Environment Branch Strategy</div>
+    <div class="file-tree" style="line-height:2; margin-top:0.5rem">
+<span class="tree-folder">Dev Workspace</span>    → connected to → <span class="tree-file">feature/* or develop branch</span>   <span class="tree-note">(developers work here)</span>
+<span class="tree-folder">Test Workspace</span>   → connected to → <span class="tree-file">release/* branch</span>             <span class="tree-note">(QA validation)</span>
+<span class="tree-folder">Prod Workspace</span>   → connected to → <span class="tree-file">main branch</span>                  <span class="tree-note">(stakeholders view here)</span>
+    </div>
+    <p style="margin-top:0.75rem;font-size:0.88rem;color:var(--text2)">Each workspace admin clicks <strong>"Update all"</strong> after the relevant PR merges into their branch. No pipeline required — the workspace is your deployment mechanism.</p>
+  </div>
+
+</div>
+
+<!-- NAV FOOTER -->
+<div class="nav-footer">
+  <button class="nav-btn" id="prev-btn" onclick="navigateSection(-1)" disabled>← Previous</button>
+  <span style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;color:var(--text3)" id="section-indicator">1 / 8</span>
+  <button class="nav-btn" id="next-btn" onclick="navigateSection(1)">Next →</button>
+</div>
+
+<!-- PROGRESS BAR -->
+<div class="progress-bar">
+  <div class="progress-fill" id="progress-fill" style="width:12.5%"></div>
+</div>
+
+<script>
+const sections = ['home','vc','tools','pbip','azure','workspace','project','workflow'];
+let currentIdx = 0;
+
+function showSection(id) {
+  // Hide all sections
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  // Show target
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+  // Update nav active state
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.section === id);
+  });
+  currentIdx = sections.indexOf(id);
+  if (currentIdx < 0) currentIdx = 0;
+  updateNavButtons();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function updateNavButtons() {
+  document.getElementById('prev-btn').disabled = currentIdx === 0;
+  document.getElementById('next-btn').disabled = currentIdx === sections.length - 1;
+  document.getElementById('section-indicator').textContent = `${currentIdx + 1} / ${sections.length}`;
+  document.getElementById('progress-fill').style.width = `${((currentIdx + 1) / sections.length) * 100}%`;
+}
+
+function navigateSection(dir) {
+  const newIdx = currentIdx + dir;
+  if (newIdx >= 0 && newIdx < sections.length) {
+    showSection(sections[newIdx]);
+  }
+}
+
+function toggleStep(header) {
+  const item = header.parentElement;
+  item.classList.toggle('open');
+}
+
+function activateWfStep(n) {
+  document.querySelectorAll('.wf-step').forEach((s, i) => {
+    if (i < n - 1) {
+      s.classList.add('completed');
+      s.classList.remove('active-step');
+    } else if (i === n - 1) {
+      s.classList.add('active-step');
+      s.classList.remove('completed');
+    } else {
+      s.classList.remove('completed', 'active-step');
+    }
+  });
+}
+
+function copyCode(btn) {
+  const codeEl = btn.closest('.code-block').querySelector('.code-body');
+  const text = codeEl.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'COPIED!';
+    btn.style.color = 'var(--green)';
+    btn.style.borderColor = 'var(--green)';
+    setTimeout(() => { btn.textContent = 'COPY'; btn.style.color = ''; btn.style.borderColor = ''; }, 2000);
+  });
+}
+
+// Wire up nav items via event delegation
+document.querySelector('nav').addEventListener('click', function(e) {
+  const item = e.target.closest('.nav-item');
+  if (item && item.dataset.section) {
+    showSection(item.dataset.section);
+  }
+});
+
+// Init
+updateNavButtons();
+</script>
+</body>
+</html>
