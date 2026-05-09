@@ -1,6 +1,8 @@
 # Power BI Version Control with PBIP & Azure Repos
 
-A guide for implementing professional version control for Power BI projects using the **Power BI Project (PBIP)** format and **Azure Repos** (Git).
+A guide for implementing professional version control for Power BI projects using the **Power BI Project (PBIP)** format, **Azure Repos** (Git), and **Microsoft Fabric Deployment Pipelines**.
+
+> ⚠️ **Important:** PBIP files **cannot be published directly** via the Power BI REST API. This guide uses the correct approach: **Fabric Git Integration** syncs PBIP content into workspaces, and **Fabric Deployment Pipelines** promote changes across environments.
 
 ---
 
@@ -33,7 +35,7 @@ This project demonstrates how to manage Power BI reports and semantic models usi
 | Power BI Desktop | June 2023+ | Required for PBIP format support |
 | Azure DevOps | Any | Azure Repos (Git) enabled |
 | Git | 2.x+ | Installed locally |
-| Power BI Service | Any | Workspace with XMLA endpoint (Premium / PPU) |
+| Microsoft Fabric | F SKU | Fabric capacity workspace required for Git Integration & Deployment Pipelines |
 
 > **Note:** PBIP format must be enabled in Power BI Desktop under **File → Options → Preview features → Store reports using enhanced metadata format (PBIP)**.
 
@@ -147,35 +149,65 @@ main                   → Production-ready reports
 
 ---
 
-## Workflow
+## How It Works
+
+This solution has two distinct layers:
 
 ```
-1. Branch off dev
-       ↓
-2. Open PBIP in Power BI Desktop
-       ↓
-3. Make changes (visuals, measures, etc.)
-       ↓
-4. Save → Git Add → Commit → Push
-       ↓
-5. Open Pull Request to dev
-       ↓
-6. Code Review (diff check in Azure Repos)
-       ↓
-7. Merge to dev → auto-deploy to Dev Workspace
-       ↓
-8. Promote to test → auto-deploy to Test Workspace
-       ↓
-9. Promote to main → auto-deploy to Production Workspace
+Azure Repos (Git)                   Microsoft Fabric
+─────────────────                   ────────────────────────────────────────
+                                    
+  feature/* branch                  
+       ↓ PR merge                   
+    dev branch      ──Git Sync──→   Dev Workspace  ─┐
+                                                     │  Fabric Deployment
+                                                     │  Pipeline (GUI)
+                                    Test Workspace ◄─┤
+                                                     │
+                                    Prod Workspace ◄─┘
 ```
+
+- **Azure Repos** is the source of truth for all PBIP source files.
+- **Fabric Git Integration** keeps the Dev workspace in sync with the `dev` branch automatically.
+- **Fabric Deployment Pipelines** promote validated content from Dev → Test → Prod — no re-publishing needed.
+- **Azure Pipelines** (optional) can trigger a Git sync via the Fabric REST API after a merge, ensuring the Dev workspace is always up to date.
 
 ---
 
-## CI/CD with Azure Pipelines
+## Setting Up Fabric Git Integration
 
-Automated deployments use the [Power BI REST API](https://learn.microsoft.com/en-us/rest/api/power-bi/) or the [Fabric REST API](https://learn.microsoft.com/en-us/rest/api/fabric/) to publish PBIP files to Power BI workspaces.
+This is a **one-time setup** per workspace. Once connected, the workspace stays in sync with the Azure Repo branch automatically.
 
-### Example Pipeline (`deploy-dev.yml`)
+### Step 1 — Connect Dev Workspace to Azure Repos
+
+1. Open your **Dev Fabric workspace** in the browser.
+2. Go to **Workspace settings → Git integration**.
+3. Select **Azure DevOps** and authenticate.
+4. Choose your **Organisation**, **Project**, **Repository**, and set the **Branch** to `dev`.
+5. Set the **Git folder** to `/` (root) or a subfolder if your PBIP files are nested.
+6. Click **Connect and sync**.
+
+The workspace will import all items from the repo. From this point, every commit to `dev` can be synced into the workspace.
+
+### Step 2 — Set Up Fabric Deployment Pipeline
+
+1. In the Fabric portal, go to **Deployment pipelines → New pipeline**.
+2. Name it (e.g., `PowerBI-CICD`) and create **3 stages**: Dev, Test, Prod.
+3. Assign your workspaces to each stage:
+   - **Dev stage** → Dev Workspace (the one connected to Git)
+   - **Test stage** → Test Workspace
+   - **Prod stage** → Prod Workspace
+4. Click **Deploy** to promote from Dev → Test, then Test → Prod via the GUI.
+
+> ✅ Deployment Pipelines handle content promotion — no script-based publishing of PBIP files required.
+
+---
+
+## CI/CD with Azure Pipelines (Git Sync Trigger)
+
+Azure Pipelines cannot publish PBIP files directly. Instead, the pipeline calls the **Fabric REST API** to trigger a Git sync on the Dev workspace after a merge to `dev`. This ensures the workspace reflects the latest commit without manual intervention.
+
+### Example Pipeline (`sync-dev.yml`)
 
 ```yaml
 trigger:
@@ -184,54 +216,83 @@ trigger:
       - dev
 
 pool:
-  vmImage: 'windows-latest'
+  vmImage: 'ubuntu-latest'
 
 variables:
-  - group: PowerBI-ServicePrincipal
+  - group: Fabric-ServicePrincipal
 
 steps:
   - checkout: self
 
   - task: PowerShell@2
-    displayName: 'Install Power BI Cmdlets'
+    displayName: 'Get Entra ID Access Token'
     inputs:
       targetType: 'inline'
       script: |
-        Install-Module -Name MicrosoftPowerBIMgmt -Force -Scope CurrentUser
+        $body = @{
+          grant_type    = "client_credentials"
+          client_id     = "$(CLIENT_ID)"
+          client_secret = "$(CLIENT_SECRET)"
+          scope         = "https://api.fabric.microsoft.com/.default"
+        }
+        $response = Invoke-RestMethod `
+          -Uri "https://login.microsoftonline.com/$(TENANT_ID)/oauth2/v2.0/token" `
+          -Method POST -Body $body
+        Write-Host "##vso[task.setvariable variable=ACCESS_TOKEN;issecret=true]$($response.access_token)"
 
   - task: PowerShell@2
-    displayName: 'Deploy Reports to Dev Workspace'
+    displayName: 'Trigger Fabric Git Sync on Dev Workspace'
     inputs:
       targetType: 'inline'
       script: |
-        $credential = New-Object System.Management.Automation.PSCredential(
-          "$(CLIENT_ID)",
-          (ConvertTo-SecureString "$(CLIENT_SECRET)" -AsPlainText -Force)
-        )
-        Connect-PowerBIServiceAccount -ServicePrincipal `
-          -Credential $credential -TenantId "$(TENANT_ID)"
-
-        # Publish each report
-        Get-ChildItem -Path "reports" -Filter "*.pbip" | ForEach-Object {
-          New-PowerBIReport -Path $_.FullName `
-            -WorkspaceId "$(DEV_WORKSPACE_ID)" -ConflictAction CreateOrOverwrite
+        $headers = @{
+          Authorization  = "Bearer $(ACCESS_TOKEN)"
+          "Content-Type" = "application/json"
         }
+
+        # Get latest commit SHA from the current build
+        $commitSha = "$(Build.SourceVersion)"
+
+        $body = @{
+          workspaceHead = @{
+            itemsToInclude = "All"
+          }
+          remoteCommitHash = $commitSha
+          conflictResolution = @{
+            conflictResolutionType  = "PreferRemote"
+            conflictResolutionPolicy = "PreferRemote"
+          }
+        } | ConvertTo-Json -Depth 5
+
+        # Trigger update from Git to workspace
+        $uri = "https://api.fabric.microsoft.com/v1/workspaces/$(DEV_WORKSPACE_ID)/git/updateFromGit"
+        Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $body
+        Write-Host "Git sync triggered successfully for Dev workspace."
 ```
 
 ### Azure DevOps Variable Groups
 
-Store secrets securely in **Azure DevOps Library → Variable Groups**:
+Store secrets in **Azure DevOps Library → Variable Groups** (name: `Fabric-ServicePrincipal`):
 
 | Variable | Description |
 |----------|-------------|
-| `TENANT_ID` | Azure AD Tenant ID |
-| `CLIENT_ID` | Service Principal App ID |
+| `TENANT_ID` | Azure AD / Entra ID Tenant ID |
+| `CLIENT_ID` | Service Principal App (Client) ID |
 | `CLIENT_SECRET` | Service Principal Secret |
-| `DEV_WORKSPACE_ID` | Power BI Dev Workspace GUID |
-| `TEST_WORKSPACE_ID` | Power BI Test Workspace GUID |
-| `PROD_WORKSPACE_ID` | Power BI Prod Workspace GUID |
+| `DEV_WORKSPACE_ID` | Fabric Dev Workspace GUID |
 
----
+> The Service Principal must be added as a **workspace Member or Admin** in the Fabric Dev workspace, and must have **Contributor** access to the Azure Repo.
+
+### Promotion: Dev → Test → Prod
+
+Promotion is handled manually (or via approval gate) using the **Fabric Deployment Pipeline GUI** or the Fabric REST API:
+
+```powershell
+# Optional: trigger deployment pipeline stage via REST API
+$uri = "https://api.fabric.microsoft.com/v1/pipelines/$(PIPELINE_ID)/deployAll"
+Invoke-RestMethod -Uri $uri -Method POST -Headers $headers
+```
+
 
 ## Best Practices
 
@@ -276,11 +337,17 @@ Enable it under *File → Options and settings → Options → Preview features 
 **Git shows large diffs on every save**
 Check if Power BI is regenerating GUIDs on each save. Enable the *"Preserve layout GUID"* option if available, or normalize JSON formatting using a pre-commit hook.
 
-**Pipeline fails to authenticate**
-Ensure the Service Principal has the **Power BI Admin** or appropriate workspace role, and that the `CLIENT_SECRET` has not expired in Azure AD.
+**Fabric Git sync fails with 403 / Unauthorized**
+Ensure the Service Principal is added as a **Member or Admin** on the Fabric Dev workspace, and has **Contributor** access to the Azure Repo in DevOps.
+
+**Workspace shows "Uncommitted changes" after sync**
+This usually means a local workspace change (e.g., a refresh or manual edit) conflicts with the repo. Use **Update all** in the workspace Git integration panel to pull from the repo and discard workspace changes.
+
+**Deployment Pipeline deploy button is greyed out**
+The source stage must have no uncommitted Git changes. Sync the Dev workspace from Git first, then redeploy.
 
 **Report opens blank after clone**
-Data source credentials are not stored in Git. Reconnect data sources in Power BI Desktop via *Transform Data → Data source settings*.
+Data source credentials are not stored in Git. Reconnect data sources in Power BI Desktop via *Transform Data → Data source settings*, or set credentials in the Fabric workspace via **Settings → Data source credentials**.
 
 ---
 
